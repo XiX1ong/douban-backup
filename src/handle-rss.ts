@@ -56,12 +56,7 @@ export function handleRSSFeeds(feeds: RSSFeedItem[]): FeedItem[] {
     const { category, id, status } = itemInfo;
     const dom = new JSDOM(item.content!.trim());
     const contents = [...dom.window.document.querySelectorAll('td p')];
-    const ratingElements = contents.filter((el) => el.textContent!.startsWith('推荐'));
-    let ratingNumber = 0;
-    if (ratingElements.length) {
-      const rating = ratingElements[0].textContent!.replace(/^推荐: /, '').trim();
-      ratingNumber = RATING_TEXT[rating as keyof typeof RATING_TEXT];
-    }
+    const ratingNumber = extractRatingFromContent(item.content!);
     const commentElements = contents.filter((el) => el.textContent!.startsWith('备注'));
     let comment = '';
     if (commentElements.length) {
@@ -70,7 +65,7 @@ export function handleRSSFeeds(feeds: RSSFeedItem[]): FeedItem[] {
     const result = {
       id,
       link: item.link,
-      rating: ratingNumber || null,
+      rating: ratingNumber,
       comment: typeof comment === 'string' ? comment : null, // 备注：XXX -> 短评
       time: item.isoDate, // '2021-05-30T06:49:34.000Z'
       status,
@@ -80,6 +75,37 @@ export function handleRSSFeeds(feeds: RSSFeedItem[]): FeedItem[] {
   });
 
   return normalizedFeeds;
+}
+
+/**
+ * Extract a user's 1–5 star rating from the HTML in a Douban RSS item.
+ *
+ * A completed item is allowed to have no rating. In that case this returns
+ * null. If Douban emits a rating-looking line in an unknown format, log it so
+ * a parser regression is not silently confused with an unrated item.
+ */
+export function extractRatingFromContent(content: string): number | null {
+  const dom = new JSDOM(content.trim());
+  const paragraphs = [...dom.window.document.querySelectorAll('td p')]
+    .map((el) => el.textContent?.trim() || '');
+
+  for (const text of paragraphs) {
+    const match = text.match(
+      /^(?:推荐|评价)\s*[:：]\s*(很差|较差|还行|推荐|力荐)$/,
+    );
+    if (match) {
+      return RATING_TEXT[match[1] as keyof typeof RATING_TEXT];
+    }
+  }
+
+  const unexpectedRating = paragraphs.find((text) =>
+    /^(?:推荐|评价)\s*[:：]?/.test(text),
+  );
+  if (unexpectedRating) {
+    consola.warn(`Unrecognized Douban RSS rating format: ${unexpectedRating}`);
+  }
+
+  return null;
 }
 
 

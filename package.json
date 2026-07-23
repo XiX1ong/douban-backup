@@ -5,7 +5,9 @@
   "exports": "./index.js",
   "type": "module",
   "scripts": {
-    "sync": "tsx src/index.ts"
+    "sync": "tsx src/index.ts",
+    "test": "tsx --test src/*.test.ts",
+    "backfill:notion": "tsx scripts/backfill-notion.ts"
   },
   "repository": {
     "type": "git",

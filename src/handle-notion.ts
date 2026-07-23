@@ -9,6 +9,7 @@ import { PropertyTypeMap, EMOJI } from './const';
 import DB_PROPERTIES from '../cols.json';
 import {
   ItemCategory,
+  NotionPropTypesEnum,
   type FeedItem,
   type NotionUrlPropType,
   type DB_PROPERTIES_KEYS,
@@ -24,6 +25,13 @@ const notion = new Client({
   auth: process.env.NOTION_TOKEN,
   notionVersion: '2025-09-03',
 });
+
+export function getTitlePropertyName(
+  properties: Record<string, { type: string }>,
+): string | undefined {
+  return Object.entries(properties)
+    .find(([, property]) => property.type === 'title')?.[0];
+}
 
 /**
  * Asynchronously handles the Notion feeds by grouping them by category and then
@@ -168,9 +176,25 @@ async function addItemToNotion(itemData: {
     itemData[DB_PROPERTIES.NAME]
   );
   try {
+    const dataSourceId = getDataSourceId(category);
+    if (!dataSourceId) {
+      throw new Error('No data source id found for category: ' + category);
+    }
+
+    const db = await notion.dataSources.retrieve({ data_source_id: dataSourceId });
+    const titlePropertyName = getTitlePropertyName(db.properties);
+    const title = itemData[DB_PROPERTIES.NAME];
+
+    if (!titlePropertyName) {
+      throw new Error(`No title property found in ${category} data source.`);
+    }
+    if (typeof title !== 'string' || !title.trim()) {
+      throw new Error(`Refusing to create ${category} page with an empty title.`);
+    }
+
     const properties: Record<string, any> = {};
-    const keys = Object.keys(DB_PROPERTIES) as DB_PROPERTIES_KEYS[];
-    keys.shift(); // remove fist one NAME
+    const keys = (Object.keys(DB_PROPERTIES) as (keyof typeof DB_PROPERTIES)[])
+      .filter((key): key is DB_PROPERTIES_KEYS => key !== 'NAME');
     keys.forEach((key) => {
       if (itemData[DB_PROPERTIES[key]]) {
         properties[DB_PROPERTIES[key]] = buildPropertyValue(
@@ -181,12 +205,6 @@ async function addItemToNotion(itemData: {
       }
     });
 
-    const dataSourceId = getDataSourceId(category);
-    if (!dataSourceId) {
-      throw new Error('No data source id found for category: ' + category);
-    }
-
-    const db = await notion.dataSources.retrieve({ data_source_id: dataSourceId });
     const columns = Object.keys(db.properties);
     // remove cols which are not in the current database
     const propKeys = Object.keys(properties);
@@ -195,6 +213,15 @@ async function addItemToNotion(itemData: {
         delete properties[prop];
       }
     });
+
+    // The title property's name is user-customizable in Notion. Always use the
+    // actual schema instead of silently dropping the title when cols.json and
+    // the database template use different names.
+    properties[titlePropertyName] = buildPropertyValue(
+      title,
+      NotionPropTypesEnum.TITLE,
+      titlePropertyName,
+    );
 
     const postData: CreatePageParameters = {
       parent: {

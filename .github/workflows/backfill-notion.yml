@@ -1,0 +1,35 @@
+name: backfill-notion
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Write the previewed changes to Notion
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    env:
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      NOTION_MOVIE_DATABASE_ID: ${{ secrets.NOTION_MOVIE_DATABASE_ID }}
+      NOTION_MUSIC_DATABASE_ID: ${{ secrets.NOTION_MUSIC_DATABASE_ID }}
+      NOTION_BOOK_DATABASE_ID: ${{ secrets.NOTION_BOOK_DATABASE_ID }}
+      NOTION_GAME_DATABASE_ID: ${{ secrets.NOTION_GAME_DATABASE_ID }}
+      NOTION_DRAMA_DATABASE_ID: ${{ secrets.NOTION_DRAMA_DATABASE_ID }}
+      DOUBAN_USER_ID: ${{ secrets.DOUBAN_USER_ID }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+      - run: npm ci
+      - name: Preview backfill
+        if: ${{ !inputs.apply }}
+        run: npm run backfill:notion
+      - name: Apply backfill
+        if: ${{ inputs.apply }}
+        run: npm run backfill:notion -- --apply
