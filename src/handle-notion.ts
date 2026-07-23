@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import { Client, type DatabaseObjectResponse } from '@notionhq/client';
 import { type CreatePageParameters } from '@notionhq/client/build/src/api-endpoints';
 import scrapyDouban from './handle-douban';
-import { getDataSourceId, sleep, buildPropertyValue } from './utils';
+import { resolveDataSourceId, sleep, buildPropertyValue } from './utils';
 import { PropertyTypeMap, EMOJI } from './const';
 import DB_PROPERTIES from '../cols.json';
 import {
@@ -91,7 +91,7 @@ async function syncNotionDB(categorizedFeeds: FeedItem[], category: ItemCategory
     return;
   }
 
-  const dataSourceId = getDataSourceId(category);
+  const dataSourceId = await resolveDataSourceId(notion, category);
   if (!dataSourceId) {
     consola.warn(`No notion data source id for ${category}`);
     return;
@@ -176,7 +176,7 @@ async function addItemToNotion(itemData: {
     itemData[DB_PROPERTIES.NAME]
   );
   try {
-    const dataSourceId = getDataSourceId(category);
+    const dataSourceId = await resolveDataSourceId(notion, category);
     if (!dataSourceId) {
       throw new Error('No data source id found for category: ' + category);
     }

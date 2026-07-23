@@ -15,6 +15,46 @@ import {
 
 dotenv.config();
 
+type NotionDataSourceResolverClient = {
+  databases: {
+    retrieve: (args: { database_id: string }) => Promise<any>;
+  };
+  dataSources: {
+    retrieve: (args: { data_source_id: string }) => Promise<any>;
+  };
+};
+
+const resolvedDataSourceIds = new Map<string, string>();
+
+/**
+ * Accept a bare Notion ID or a copied Notion database URL.
+ */
+export function normalizeNotionId(value?: string): string {
+  if (!value) {
+    return '';
+  }
+
+  const trimmed = value.trim();
+  const compactMatch = trimmed.match(/[0-9a-f]{32}/i);
+  const uuidMatch = trimmed.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+  );
+  const compact = (compactMatch?.[0] || uuidMatch?.[0] || '')
+    .replace(/-/g, '');
+
+  if (compact.length !== 32) {
+    return trimmed;
+  }
+
+  return [
+    compact.slice(0, 8),
+    compact.slice(8, 12),
+    compact.slice(12, 16),
+    compact.slice(16, 20),
+    compact.slice(20),
+  ].join('-');
+}
+
 /**
  * Retrieves the data source ID for the given category.
  *
@@ -29,7 +69,51 @@ export function getDataSourceId(category: ItemCategory): string {
     [ItemCategory.Game]: process.env.NOTION_GAME_DATABASE_ID,
     [ItemCategory.Drama]: process.env.NOTION_DRAMA_DATABASE_ID,
   };
-  return databasesMap[category] as string;
+  return normalizeNotionId(databasesMap[category]);
+}
+
+/**
+ * Resolve legacy Notion database IDs to the data source IDs required by the
+ * 2025-09-03 API. Already-configured data source IDs continue to work.
+ */
+export async function resolveDataSourceId(
+  client: NotionDataSourceResolverClient,
+  category: ItemCategory,
+): Promise<string> {
+  const configuredId = getDataSourceId(category);
+  if (!configuredId) {
+    return '';
+  }
+
+  const cached = resolvedDataSourceIds.get(configuredId);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const database = await client.databases.retrieve({
+      database_id: configuredId,
+    });
+    const resolved = database.data_sources?.[0]?.id;
+    if (!resolved) {
+      throw new Error(
+        `Notion database ${configuredId} does not contain a data source.`,
+      );
+    }
+    resolvedDataSourceIds.set(configuredId, resolved);
+    return resolved;
+  } catch (databaseError) {
+    try {
+      const dataSource = await client.dataSources.retrieve({
+        data_source_id: configuredId,
+      });
+      const resolved = dataSource.id || configuredId;
+      resolvedDataSourceIds.set(configuredId, resolved);
+      return resolved;
+    } catch {
+      throw databaseError;
+    }
+  }
 }
 
 /**

@@ -6,7 +6,7 @@ import scrapyDouban from '../src/handle-douban';
 import { fetchRSSFeeds, handleRSSFeeds } from '../src/handle-rss';
 import { PropertyTypeMap } from '../src/const';
 import { ItemCategory, NotionPropTypesEnum, type NotionUrlPropType } from '../src/types';
-import { buildPropertyValue, getDataSourceId, sleep } from '../src/utils';
+import { buildPropertyValue, resolveDataSourceId, sleep } from '../src/utils';
 
 dotenv.config();
 
@@ -52,7 +52,7 @@ function getPageUrl(properties: Record<string, any>): string | undefined {
 }
 
 async function findCandidates(category: ItemCategory): Promise<BackfillCandidate[]> {
-  const dataSourceId = getDataSourceId(category);
+  const dataSourceId = await resolveDataSourceId(notion, category);
   if (!dataSourceId) {
     consola.info(`Skipping ${category}: no Notion data source configured.`);
     return [];
